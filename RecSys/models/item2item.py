@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Literal, get_args
 import numpy as np
 
-type SymType = Literal["co-occurrence", "cosine", "jaccard"]
+type SymType = Literal["co-occurrence", "cosine", "jaccard", "probability", "lift"]
 
 
 class Item2Item:
@@ -29,28 +29,47 @@ class Item2Item:
 
         n_items, n_users = X.shape
 
-        cooccurence_matrix = X @ X.T
+        cooccurrence_matrix = X @ X.T
         item_popularity = X.sum(axis=1)
 
         if self.similarity_type == "co-occurrence":
-            score_matrix = cooccurence_matrix.copy()
+            score_matrix = cooccurrence_matrix.copy()
         elif self.similarity_type == "cosine":
             denominator = np.sqrt(np.outer(item_popularity, item_popularity))
             score_matrix = np.divide(
-                cooccurence_matrix,
+                cooccurrence_matrix,
                 denominator,
-                out=np.zeros_like(cooccurence_matrix, dtype=float),
+                out=np.zeros_like(cooccurrence_matrix, dtype=float),
                 where=denominator > 0,
             )
         elif self.similarity_type == "jaccard":
             union_score = (
-                item_popularity[:, None] + item_popularity[None, :] - cooccurence_matrix
+                item_popularity[:, None]
+                + item_popularity[None, :]
+                - cooccurrence_matrix
             )
             score_matrix = np.divide(
-                cooccurence_matrix,
+                cooccurrence_matrix,
                 union_score,
-                out=np.zeros_like(cooccurence_matrix, dtype=float),
+                out=np.zeros_like(cooccurrence_matrix, dtype=float),
                 where=union_score > 0,
+            )
+        elif self.similarity_type == "probability":
+            item_counts = np.diag(score_matrix)
+            score_matrix = np.divide(
+                cooccurrence_matrix,
+                item_counts[:, None],
+                out=np.zeros_like(cooccurrence_matrix, dtype=float),
+                where=item_counts[:, None] > 0,
+            )
+        elif self.similarity_type == "lift":
+            item_counts = np.diag(cooccurrence_matrix)
+            denominator = item_counts[:, None] * item_counts[None, :]
+            score_matrix = n_users * np.divide(
+                cooccurrence_matrix,
+                denominator,
+                out=np.zeros_like(cooccurrence_matrix, dtype=float),
+                where=denominator > 0,
             )
 
         np.fill_diagonal(score_matrix, 0.0)
