@@ -43,7 +43,10 @@ class Item2Item:
             )
 
     @staticmethod
-    def _topk_indices(scores: np.ndarray, k: int) -> np.ndarray:
+    def _topk_indices(
+        scores: np.ndarray,
+        k: int,
+    ) -> np.ndarray:
         if not 1 <= k <= scores.size:
             raise ValueError(
                 f"'k' must be between 1 and {scores.size}; got {k} instead"
@@ -54,16 +57,35 @@ class Item2Item:
 
         return topk_indices
 
+    @staticmethod
+    def _time_decay_weights(
+        timedelta: np.ndarray,
+        gamma: float,
+    ) -> np.ndarray:
+        return np.exp(-gamma * timedelta)
+
     def fit(
         self,
         X: np.ndarray,
-        matrix_kind: Literal["item2user", "user2item"] = "item2user",
         use_shrinkage: bool = True,
         use_idf: bool = True,
         *,
         alpha: float = 10,
+        timedelta_matrix: np.ndarray | None = None,
+        time_decay_gamma: float = 0.03,
     ) -> "Item2Item":
-        """X: item2user | user2item matrix of implicit feedbacks"""
+        """fits model on your data; now you can use other methods like '.predict()'
+        X: np.ndarray ->interaction matrix sized (n_users, n_items)
+        use_shrinkage: bool -> use shrinkage while fitting or not
+        use_idf: bool -> use idf normalization while fitting or not
+        timedelta_matrix: optional matrix with the same shape as X for time decay
+
+        ---
+
+        alpha: float = 10 -> hyperparameter used if 'use_shrinkage' is True
+        time_decay_gamma: float = 0.03 -> decay strength for timedelta_matrix
+
+        """
         if use_shrinkage and alpha < 0:
             raise ValueError(f"'alpha' must be non-negative; got {alpha!r} instead")
 
@@ -80,19 +102,28 @@ class Item2Item:
 
         X = (X > 0).astype(np.float64)
 
-        if matrix_kind == "item2user":
-            n_items, n_users = X.shape
-            cooccurrence_matrix = X @ X.T
-            item_popularity = X.sum(axis=1)
-        elif matrix_kind == "user2item":
-            n_users, n_items = X.shape
-            cooccurrence_matrix = X.T @ X
-            item_popularity = X.sum(axis=0)
+        if timedelta_matrix is not None:
+            timedelta_matrix = np.asarray(timedelta_matrix)
+            if timedelta_matrix.shape != X.shape:
+                raise ValueError(
+                    f"'timedelta_matrix' must have shape {X.shape}; "
+                    f"got {timedelta_matrix.shape} instead"
+                )
+
+            X = X * self._time_decay_weights(
+                timedelta=timedelta_matrix,
+                gamma=time_decay_gamma,
+            )
+
+        n_users, n_items = X.shape
+        cooccurrence_matrix = X.T @ X
+        item_popularity = X.sum(axis=0)
+        item_counts = np.diag(cooccurrence_matrix)
 
         if self.similarity_type == "co-occurrence":
             score_matrix = cooccurrence_matrix.copy()
         elif self.similarity_type == "cosine":
-            denominator = np.sqrt(np.outer(item_popularity, item_popularity))
+            denominator = np.sqrt(np.outer(item_counts, item_counts))
             score_matrix = np.divide(
                 cooccurrence_matrix,
                 denominator,
@@ -101,8 +132,8 @@ class Item2Item:
             )
         elif self.similarity_type == "jaccard":
             union_score = (
-                item_popularity[:, None]
-                + item_popularity[None, :]
+                item_counts[:, None]
+                + item_counts[None, :]
                 - cooccurrence_matrix
             )
             score_matrix = np.divide(
@@ -112,7 +143,6 @@ class Item2Item:
                 where=union_score > 0,
             )
         elif self.similarity_type == "probability":
-            item_counts = np.diag(cooccurrence_matrix)
             score_matrix = np.divide(
                 cooccurrence_matrix,
                 item_counts[:, None],
@@ -120,7 +150,6 @@ class Item2Item:
                 where=item_counts[:, None] > 0,
             )
         elif self.similarity_type == "lift":
-            item_counts = np.diag(cooccurrence_matrix)
             denominator = item_counts[:, None] * item_counts[None, :]
             score_matrix = n_users * np.divide(
                 cooccurrence_matrix,
@@ -171,17 +200,40 @@ class Item2Item:
     def predict(
         self,
         user: np.ndarray,
+        *,
+        timedelta_vector: np.ndarray | None = None,
+        time_decay_gamma: float = 0.03,
         prediction_size: int = 1,
         return_scores: bool = False,
     ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
         self._check_is_fitted()
 
         user = np.asarray(user)
-        user = (user > 0).astype(np.float64)
         self._validate_user(user)
 
+        seen_items = user > 0
+        user = seen_items.astype(np.float64)
+
+        if timedelta_vector is not None:
+            timedelta_vector = np.asarray(timedelta_vector)
+            if timedelta_vector.ndim != 1:
+                raise ValueError(
+                    f"'timedelta_vector' must be one-dimensional; "
+                    f"got {timedelta_vector.ndim!r} dimensions instead"
+                )
+            if timedelta_vector.shape != user.shape:
+                raise ValueError(
+                    f"'timedelta_vector' must have shape {user.shape}; "
+                    f"got {timedelta_vector.shape} instead"
+                )
+
+            user = user * self._time_decay_weights(
+                timedelta=timedelta_vector,
+                gamma=time_decay_gamma,
+            )
+
         scores = self.similarity_scores(user)
-        scores[user > 0] = -np.inf
+        scores[seen_items] = -np.inf
 
         indices = self._topk_indices(
             scores=scores,
@@ -209,15 +261,32 @@ class Item2Item:
     def predict_batch(
         self,
         users: np.ndarray,
+        *,
+        timedelta_matrix: np.ndarray | None = None,
+        time_decay_gamma: float = 0.03,
         prediction_size: int = 1,
         return_scores: bool = False,
     ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
         self._check_is_fitted()
 
         users = np.asarray(users)
-        users = (users > 0).astype(np.float64)
-
         self._validate_users(users)
+
+        seen_items = users > 0
+        users = seen_items.astype(np.float64)
+
+        if timedelta_matrix is not None:
+            timedelta_matrix = np.asarray(timedelta_matrix)
+            if timedelta_matrix.shape != users.shape:
+                raise ValueError(
+                    f"'timedelta_matrix' must have shape {users.shape}; "
+                    f"got {timedelta_matrix.shape} instead"
+                )
+
+            users = users * self._time_decay_weights(
+                timedelta=timedelta_matrix,
+                gamma=time_decay_gamma,
+            )
 
         user_scores = self.similarity_scores(users)
 
@@ -232,7 +301,7 @@ class Item2Item:
 
         for user_idx in range(users.shape[0]):
             scores = user_scores[user_idx].copy()
-            scores[users[user_idx] > 0] = -np.inf
+            scores[seen_items[user_idx]] = -np.inf
 
             indices = self._topk_indices(
                 scores=scores,
