@@ -67,20 +67,21 @@ class Item2Item:
     def fit(
         self,
         X: np.ndarray,
+        *,
         use_shrinkage: bool = True,
         use_idf: bool = True,
-        *,
         alpha: float = 10,
         timedelta_matrix: np.ndarray | None = None,
         time_decay_gamma: float = 0.03,
     ) -> "Item2Item":
         """fits model on your data; now you can use other methods like '.predict()'
         X: np.ndarray ->interaction matrix sized (n_users, n_items)
+
+        ---
+
         use_shrinkage: bool -> use shrinkage while fitting or not
         use_idf: bool -> use idf normalization while fitting or not
         timedelta_matrix: optional matrix with the same shape as X for time decay
-
-        ---
 
         alpha: float = 10 -> hyperparameter used if 'use_shrinkage' is True
         time_decay_gamma: float = 0.03 -> decay strength for timedelta_matrix
