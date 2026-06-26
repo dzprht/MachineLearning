@@ -1,13 +1,12 @@
-from dataclasses import dataclass
 from typing import Literal, get_args
 import numpy as np
 
-type SymType = Literal["co-occurrence", "cosine", "jaccard", "probability", "lift"]
+SimilarityType = Literal["co-occurrence", "cosine", "jaccard", "probability", "lift"]
 
 
 class Item2Item:
-    def __init__(self, similarity_type: SymType):
-        allowed_types = get_args(SymType.__value__)
+    def __init__(self, similarity_type: SimilarityType):
+        allowed_types = get_args(SimilarityType)
 
         if similarity_type not in allowed_types:
             raise ValueError(
@@ -17,7 +16,7 @@ class Item2Item:
         self.similarity_type = similarity_type
 
         self.is_fitted = False
-    
+
     def _check_is_fitted(self) -> None:
         if not self.is_fitted:
             raise RuntimeError(
@@ -62,7 +61,7 @@ class Item2Item:
         use_idf: bool = True,
         *,
         alpha: float = 10,
-    ) -> None:
+    ) -> "Item2Item":
         """X: item2user matrix of implicit feedbacks"""
         if use_shrinkage and alpha < 0:
             raise ValueError(f"'alpha' must be non-negative; got {alpha!r} instead")
@@ -70,18 +69,16 @@ class Item2Item:
         X = np.asarray(X)
 
         if X.ndim != 2:
-            raise ValueError(
-                f"'X' must be two-dimensional; got shape {X.shape}"
-            )
+            raise ValueError(f"'X' must be two-dimensional; got shape {X.shape}")
 
         if X.shape[0] == 0 or X.shape[1] == 0:
             raise ValueError("'X' must not be empty")
 
         if not np.all(np.isfinite(X)):
             raise ValueError("'X' must contain only finite values")
-        
-        X = np.where(X > 0, 1, 0).astype(np.float64)
-        
+
+        X = (X > 0).astype(np.float64)
+
         n_items, n_users = X.shape
 
         cooccurrence_matrix = X @ X.T
@@ -153,14 +150,16 @@ class Item2Item:
 
         self.is_fitted = True
 
+        return self
+
     def similarity_scores(
         self,
-        user: np.ndarray,
+        interactions: np.ndarray,
     ) -> np.ndarray:
         if self.idf is not None:
-            user = user * self.idf
+            interactions = interactions * self.idf
 
-        scores = user @ self.score_matrix
+        scores = interactions @ self.score_matrix
 
         return scores
 
@@ -173,10 +172,10 @@ class Item2Item:
         self._check_is_fitted()
 
         user = np.asarray(user)
-        user = np.where(user > 0, 1, 0).astype(np.float64)
+        user = (user > 0).astype(np.float64)
         self._validate_user(user)
 
-        scores = self.similarity_scores(user=user)
+        scores = self.similarity_scores(user)
         scores[user > 0] = -np.inf
 
         indices = self._topk_indices(
@@ -196,72 +195,67 @@ class Item2Item:
         self._check_is_fitted()
 
         users = np.asarray(users)
-        users = np.where(users > 0, 1, 0).astype(np.float64)
+        users = (users > 0).astype(np.float64)
 
         self._validate_users(users)
 
         return self.similarity_scores(users)
 
-def predict_batch(
-    self,
-    users: np.ndarray,
-    prediction_size: int = 1,
-    return_scores: bool = False,
-) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
-    users = np.asarray(users)
-    users = (users > 0).astype(np.float64)
+    def predict_batch(
+        self,
+        users: np.ndarray,
+        prediction_size: int = 1,
+        return_scores: bool = False,
+    ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
+        self._check_is_fitted()
 
-    self._validate_users(users)
+        users = np.asarray(users)
+        users = (users > 0).astype(np.float64)
 
-    user_scores = self.score_users(users)
+        self._validate_users(users)
 
-    predicted_indices = np.empty(
-        (users.shape[0], prediction_size),
-        dtype=np.int64,
-    )
-    predicted_scores = np.empty(
-        (users.shape[0], prediction_size),
-        dtype=np.float64,
-    )
+        user_scores = self.similarity_scores(users)
 
-    for user_idx in range(users.shape[0]):
-        scores = user_scores[user_idx].copy()
-        scores[users[user_idx] > 0] = -np.inf
-
-        n_candidates = np.count_nonzero(users[user_idx] == 0)
-
-        if prediction_size > n_candidates:
-            raise ValueError(
-                f"User {user_idx} has only {n_candidates} unseen items, "
-                f"but prediction_size={prediction_size}"
-            )
-
-        indices = self._topk_indices(
-            scores=scores,
-            k=prediction_size,
+        predicted_indices = np.empty(
+            (users.shape[0], prediction_size),
+            dtype=np.int64,
+        )
+        predicted_scores = np.empty(
+            (users.shape[0], prediction_size),
+            dtype=np.float64,
         )
 
-        predicted_indices[user_idx] = indices
-        predicted_scores[user_idx] = scores[indices]
+        for user_idx in range(users.shape[0]):
+            scores = user_scores[user_idx].copy()
+            scores[users[user_idx] > 0] = -np.inf
 
-    if return_scores:
-        return predicted_indices, predicted_scores
+            indices = self._topk_indices(
+                scores=scores,
+                k=prediction_size,
+            )
 
-    return predicted_indices
+            predicted_indices[user_idx] = indices
+            predicted_scores[user_idx] = scores[indices]
 
+        if return_scores:
+            return predicted_indices, predicted_scores
 
-def similar_items(
-    self,
-    item: int,
-    k: int = 10,
-    return_scores: bool = False,
-):
-    scores = self.score_matrix[item].copy()
-    scores[item] = -np.inf
+        return predicted_indices
 
-    indices = self._topk_indices(scores, k)
+    def similar_items(
+        self,
+        item: int,
+        k: int = 10,
+        return_scores: bool = False,
+    ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
+        self._check_is_fitted()
 
-    if return_scores:
-        return indices, scores[indices]
+        scores = self.score_matrix[item].copy()
+        scores[item] = -np.inf
 
-    return indices
+        indices = self._topk_indices(scores=scores, k=k)
+
+        if return_scores:
+            return indices, scores[indices]
+
+        return indices
