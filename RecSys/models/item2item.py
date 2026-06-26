@@ -57,12 +57,13 @@ class Item2Item:
     def fit(
         self,
         X: np.ndarray,
+        matrix_kind: Literal["item2user", "user2item"] = "item2user",
         use_shrinkage: bool = True,
         use_idf: bool = True,
         *,
         alpha: float = 10,
     ) -> "Item2Item":
-        """X: item2user matrix of implicit feedbacks"""
+        """X: item2user | user2item matrix of implicit feedbacks"""
         if use_shrinkage and alpha < 0:
             raise ValueError(f"'alpha' must be non-negative; got {alpha!r} instead")
 
@@ -79,10 +80,14 @@ class Item2Item:
 
         X = (X > 0).astype(np.float64)
 
-        n_items, n_users = X.shape
-
-        cooccurrence_matrix = X @ X.T
-        item_popularity = X.sum(axis=1)
+        if matrix_kind == "item2user":
+            n_items, n_users = X.shape
+            cooccurrence_matrix = X @ X.T
+            item_popularity = X.sum(axis=1)
+        elif matrix_kind == "user2item":
+            n_users, n_items = X.shape
+            cooccurrence_matrix = X.T @ X
+            item_popularity = X.sum(axis=0)
 
         if self.similarity_type == "co-occurrence":
             score_matrix = cooccurrence_matrix.copy()
