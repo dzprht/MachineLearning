@@ -420,7 +420,7 @@ class EASE:
     ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
 
         self._validate_1dim_vector_dim(X, "X")
-        self.
+        self._validate_interactions_vector(X)
 
         X = np.asarray(X).astype(np.float64)
 
@@ -434,7 +434,9 @@ class EASE:
                 gamma=time_decay_gamma,
             )
 
+        seen_items = X > 0
         scores = self.similarity_scores(X)
+        scores[seen_items] = -np.inf
 
         topk_ind = self._get_topk_prediction_indexes(scores, prediction_size)
 
