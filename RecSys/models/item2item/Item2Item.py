@@ -1,5 +1,7 @@
 from typing import Literal, get_args
+
 import numpy as np
+
 
 SimilarityType = Literal["co-occurrence", "cosine", "jaccard", "probability", "lift"]
 
@@ -14,7 +16,6 @@ class Item2Item:
             )
 
         self.similarity_type = similarity_type
-
         self.is_fitted = False
 
     def _check_is_fitted(self) -> None:
@@ -34,12 +35,12 @@ class Item2Item:
     def _validate_users(self, users: np.ndarray) -> None:
         if users.ndim != 2:
             raise ValueError(
-                f"'users' must be 2-dimensional; got {users.ndim!r} instead"
+                f"'users' must be two-dimensional; got shape {users.shape}"
             )
 
         if users.shape[1] != self.n_items:
             raise ValueError(
-                f"'user' must contain {self.n_items} items; " f"got {users.shape[1]}"
+                f"'users' must contain {self.n_items} items; " f"got {users.shape[1]}"
             )
 
     @staticmethod
@@ -332,115 +333,3 @@ class Item2Item:
             return indices, scores[indices]
 
         return indices
-
-
-class EASE:
-    def __init__(self, lambda_l2: float = 100.0):
-        self.lambda_l2 = lambda_l2
-        self.is_fitted = False
-
-    def _check_is_fitted(self):
-        if not self.is_fitted:
-            raise RuntimeError(
-                "The model must be fitted via '.fit()' before prediction"
-            )
-    
-    def _validate_interactions_vector(self, interactions: np.ndarray) -> None:
-        if interactions.shape[0] != self.n_items:
-            raise ValueError(
-                f"'user' must contain {self.n_items} items; " f"got {interactions.shape[0]}"
-            )
-
-    def _validate_1dim_vector_dim(X: np.ndarray, name: str) -> None:
-        if X.ndim != 1:
-            raise RuntimeError(
-                (
-                    f"{name!r} must be 1-dimensional vector; got {X.ndim!r}-dimensional instead"
-                )
-            )
-
-    def _validate_interactions_matrix(X: np.ndarray) -> None:
-        if X.ndim != 2:
-            raise ValueError(
-                f"'interacions_matrix' must be 2-dimensional matrix; got {X.ndim!r}-dimensional instead"
-            )
-
-    @staticmethod
-    def _time_decay_weights(
-        timedelta: np.ndarray,
-        gamma: float,
-    ) -> np.ndarray:
-        return np.exp(-gamma * timedelta)
-
-    @staticmethod
-    def _get_topk_prediction_indexes(scores: np.ndarray, k: int) -> np.ndarray:
-        topk = np.argpartition(scores, -k)[:-k]
-        topk = topk[np.argsort(scores, topk, descending=True)]
-
-        return topk
-
-    def fit(self, X) -> "EASE":
-        X = np.asarray(X).astype(np.float64)
-        self._validate_interactions_matrix()
-
-        n_users, n_items = X.shape
-
-        G = X.t @ X
-        P = np.linalg.inv((G + self.lambda_l2 @ np.eye(n_items)))
-        B = np.divide(-P, np.diag(P)[None, :])
-        np.fill_diagonal(B, 0.0)
-
-        self.n_items = n_items
-        self.n_users = n_users
-        self.B = B
-
-        self.is_fitted = True
-
-        return self
-
-    def similarity_scores(
-        self,
-        interactions: np.ndarray,
-    ) -> np.ndarray:
-        if self.idf is not None:
-            interactions = interactions * self.idf
-
-        scores = interactions @ self.B
-
-        return scores
-
-    def predict(
-        self,
-        X: np.ndarray,
-        *,
-        timedelta_vector: np.ndarray | None = None,
-        time_decay_gamma: float = 0.03,
-        prediction_size: int = 1,
-        return_scores: bool = False,
-    ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
-
-        self._validate_1dim_vector_dim(X, "X")
-        self._validate_interactions_vector(X)
-
-        X = np.asarray(X).astype(np.float64)
-
-        if timedelta_vector is not None:
-            self._validate_1dim_vector_dim(timedelta_vector, "timedelta_vector")
-
-            timedelta_vector = np.asarray(timedelta_vector).astype(np.float64)
-
-            X = X * self._time_decay_weights(
-                timedelta=timedelta_vector,
-                gamma=time_decay_gamma,
-            )
-
-        seen_items = X > 0
-        scores = self.similarity_scores(X)
-        scores[seen_items] = -np.inf
-
-        topk_ind = self._get_topk_prediction_indexes(scores, prediction_size)
-
-        if return_scores:
-            topk_scores = scores[topk_ind]
-
-        return topk_ind, topk_scores

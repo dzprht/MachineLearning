@@ -12,10 +12,14 @@ class ELSA(nn.Module):
         super().__init__()
 
         if n_items <= 1:
-            raise ValueError("...")
+            raise ValueError(
+                f"'n_items' must be greater than 1; got {n_items!r} instead"
+            )
 
         if n_factors <= 0:
-            raise ValueError("...")
+            raise ValueError(
+                f"'n_factors' must be positive; got {n_factors!r} instead"
+            )
 
         self.n_items = n_items
         self.n_factors = n_factors
@@ -28,8 +32,18 @@ class ELSA(nn.Module):
         """initialize trainable item vectors"""
         nn.init.xavier_uniform_(self.raw_item_embeddings)
 
+    def _validate_input(self, x: torch.Tensor) -> None:
+        if x.ndim != 2:
+            raise ValueError("'x' must be two-dimensional")
+        if x.shape[1] != self.n_items:
+            raise ValueError(
+                f"'x' must contain {self.n_items} items; got {x.shape[1]!r} instead"
+            )
+        if not x.is_floating_point():
+            raise TypeError("'x' must have a floating point dtype")
+
     def item_embeddings(self) -> torch.Tensor:
-        """return nomalized item embeddings A
+        """return normalized item embeddings A
         Shape: (n_items, n_factors)"""
 
         return F.normalize(
@@ -58,13 +72,3 @@ class ELSA(nn.Module):
         predictions = user_embeddings @ A.T - x
 
         return predictions
-
-    def _validate_input(self, x: torch.Tensor) -> None:
-        if x.ndim != 2:
-            raise ValueError("'x' must be 2-dimensional")
-        if x.shape[1] != self.n_items:
-            raise ValueError(
-                f"expeted {self.n_items} items; got {x.shape[1]!r} instead"
-            )
-        if not x.is_floating_point():
-            raise TypeError("'x' must have a floating point dtype")
