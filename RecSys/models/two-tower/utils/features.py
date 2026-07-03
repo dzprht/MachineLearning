@@ -2,8 +2,11 @@ import numpy as np
 
 from torch import nn
 
-from typing import Callable
+from typing import Callable, TypeAlias, Literal
 from collections.abc import Iterable
+
+
+PoolingType: TypeAlias = Literal["sum", "mean", "concat"]
 
 
 class NormalInitizalizer:
@@ -34,6 +37,7 @@ class SparseFeature:
         name: str,
         vocab_size: int,
         embedding_dim: int | None = None,
+        padding_idx: Iterable | None = None,
         initializer: Callable = NormalInitizalizer,
     ) -> None:
         self.name = name
@@ -44,6 +48,7 @@ class SparseFeature:
         else:
             self.embedding_dim = embedding_dim
 
+        self.padding_idx = padding_idx
         self.initializer = initializer
 
         def __repr__(self):
@@ -61,7 +66,8 @@ class SequenceFeature:
         name: str,
         vocab_size: int,
         embedding_dim: int | None = None,
-        pooling: str = "mean", # maybe otdelniy TypeAlias is needed
+        pooling: PoolingType = "mean", # maybe otdelniy TypeAlias is needed
+        padding_idx: Iterable | None = None,
         shared_with: Iterable | str | None = None,
         initializer: Callable = NormalInitizalizer,
     ) -> None:
@@ -73,6 +79,7 @@ class SequenceFeature:
         else:
             self.embedding_dim = embedding_dim
 
+        self.padding_idx = padding_idx
         self.pooling = pooling
         self.shared_with = shared_with
         self.initializer = initializer
