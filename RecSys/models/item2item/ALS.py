@@ -1,9 +1,7 @@
 import numpy as np
 
-try:
-    from tqdm.auto import tqdm
-except ImportError:
-    tqdm = None
+from typing import Literal
+from tqdm.auto import tqdm
 
 
 class ImplicitALS:
@@ -91,6 +89,7 @@ class ImplicitALS:
         *,
         lambda_: float = 1.0,
         confidence_matrix: np.ndarray | None = None,
+        confidence_matrix_type: Literal["linear", "log"] = "log",
         alpha: float = 1.0,
         random_state: int | None = None,
     ) -> "ImplicitALS":
@@ -115,7 +114,12 @@ class ImplicitALS:
         self._validate_2dim_matrix(interactions_matrix, "interactions_matrix")
 
         if confidence_matrix is None:
-            confidence_matrix = 1 + alpha * interactions_matrix
+            if confidence_matrix_type == "log":
+                confidence_matrix = 1 + alpha * np.log(1 + interactions_matrix)
+            elif confidence_matrix_type == "linear":
+                confidence_matrix = 1 + alpha * interactions_matrix
+            else:
+                raise ValueError("'confidence_matrix_type' must be 'log' or 'linear'")
         else:
             confidence_matrix = np.asarray(confidence_matrix, dtype=np.float32)
 
@@ -137,9 +141,7 @@ class ImplicitALS:
         U = rng.normal(scale=0.01, size=(n_users, embedding_size))
         V = rng.normal(scale=0.01, size=(n_items, embedding_size))
 
-        iterator = range(n_iterations)
-        if tqdm is not None:
-            iterator = tqdm(iterator, desc="Optimizing embeddings")
+        iterator = tqdm(range(n_iterations), desc="Optimizing embeddings")
 
         for _ in iterator:
             self._optimize_item_embeddings(
@@ -220,4 +222,3 @@ class ImplicitALS:
         return topk_indexes
 
 
-implicit_ALS = ImplicitALS
