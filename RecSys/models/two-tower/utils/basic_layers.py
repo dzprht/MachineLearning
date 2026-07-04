@@ -1,6 +1,5 @@
 import torch
 from torch import nn
-from torch.nn import functional as F
 
 from collections.abc import Iterable
 from activations import ActivationFunction, activations_func

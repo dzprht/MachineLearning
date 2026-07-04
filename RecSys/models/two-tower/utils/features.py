@@ -2,8 +2,8 @@ import numpy as np
 
 from torch import nn
 
-from typing import Callable, TypeAlias, Literal
-from collections.abc import Iterable
+from typing import TypeAlias, Literal
+from collections.abc import Iterable, Callable
 
 
 PoolingType: TypeAlias = Literal["sum", "mean", "concat"]
