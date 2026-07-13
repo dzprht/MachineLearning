@@ -389,13 +389,13 @@ class SelfAttentionBlock(nn.Module):
                 device=device,
             ),
             nn.ReLU(),
-            nn.Dropout(dropout=dropout),
+            nn.Dropout(p=dropout),
             nn.Linear(
                 in_features=ffn_hidden_dim,
                 out_features=embedding_dim,
                 device=device,
             ),
-            nn.Dropout(dropout=dropout),
+            nn.Dropout(p=dropout),
         )
 
         self.sa_normalizer = nn.LayerNorm(
@@ -557,6 +557,560 @@ class SASRec(nn.Module):
 
         pos_logits = (log_feats * positives).sum(dim=-1)
         neg_logits = (log_feats * negatives).sum(dim=-1)
+
+        return pos_logits, neg_logits
+
+
+class CCGSelfAttentionLayer(nn.Module):
+    def __init__(
+        self,
+        items_count: int,
+        embedding_dim: int,
+        content_dim: int,
+        max_sequence_length: int,
+        content_hidden_dim: int | None = None,
+        dropout: float = 0.0,
+        device: torch.device | None = None,
+        n_heads: int = 1,
+        use_query_gate: bool = True,
+        use_key_gate: bool = True,
+    ) -> None:
+        super().__init__()
+
+        if n_heads <= 0:
+            raise ValueError("'n_heads' must be greater than 0")
+        if embedding_dim % n_heads != 0:
+            raise ValueError("'embedding_dim' must be divisible by 'n_heads'")
+        if content_hidden_dim is None:
+            content_hidden_dim = embedding_dim
+
+        self.items_count = items_count
+        self.embedding_dim = embedding_dim
+        self.content_dim = content_dim
+        self.max_sequence_length = max_sequence_length
+        self.content_hidden_dim = content_hidden_dim
+        self.dropout = dropout
+        self.device = device
+        self.n_heads = n_heads
+        self.head_dim = embedding_dim // n_heads
+        self.use_query_gate = use_query_gate
+        self.use_key_gate = use_key_gate
+
+        self.W_q = nn.Linear(
+            in_features=embedding_dim,
+            out_features=embedding_dim,
+            bias=False,
+            device=device,
+        )
+        self.W_k = nn.Linear(
+            in_features=embedding_dim,
+            out_features=embedding_dim,
+            bias=False,
+            device=device,
+        )
+        self.W_v = nn.Linear(
+            in_features=embedding_dim,
+            out_features=embedding_dim,
+            bias=False,
+            device=device,
+        )
+        self.W_o = nn.Linear(
+            in_features=embedding_dim,
+            out_features=embedding_dim,
+            bias=False,
+            device=device,
+        )
+
+        self.MLP_Q = nn.Sequential(
+            nn.Linear(content_dim, content_hidden_dim, device=device),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(content_hidden_dim, embedding_dim, device=device),
+        )
+        self.MLP_K = nn.Sequential(
+            nn.Linear(content_dim, content_hidden_dim, device=device),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(content_hidden_dim, embedding_dim, device=device),
+        )
+
+        nn.init.normal_(self.MLP_Q[-1].weight, mean=0.0, std=1e-3)
+        nn.init.zeros_(self.MLP_Q[-1].bias)
+        nn.init.normal_(self.MLP_K[-1].weight, mean=0.0, std=1e-3)
+        nn.init.zeros_(self.MLP_K[-1].bias)
+
+    def forward(
+        self,
+        E: torch.Tensor,
+        content: torch.Tensor,
+        padding_mask: torch.Tensor,
+        return_gates: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """E: normalized Embedding Matrix; (B, L, d)"""
+        E = E.to(device=self.W_q.weight.device)
+        content = content.to(
+            device=E.device,
+            dtype=E.dtype,
+        )
+        padding_mask = padding_mask.to(device=E.device)
+
+        batch_size, sequence_length, _ = E.shape
+
+        if content.shape != (batch_size, sequence_length, self.content_dim):
+            raise ValueError(
+                "'content' must have shape "
+                f"({batch_size}, {sequence_length}, {self.content_dim})"
+            )
+
+        Q = self.W_q(E)
+        K = self.W_k(E)
+        V = self.W_v(E)
+
+        if self.use_query_gate:
+            G_Q = 2 * torch.sigmoid(self.MLP_Q(content))
+        else:
+            G_Q = torch.ones_like(Q)
+
+        if self.use_key_gate:
+            G_K = 2 * torch.sigmoid(self.MLP_K(content))
+        else:
+            G_K = torch.ones_like(K)
+
+        Q = Q * G_Q
+        K = K * G_K
+
+        Q = _split_heads(Q, self.n_heads, self.head_dim)
+        K = _split_heads(K, self.n_heads, self.head_dim)
+        V = _split_heads(V, self.n_heads, self.head_dim)
+
+        Z = (Q @ K.swapaxes(-1, -2)) / math.sqrt(self.head_dim)  # (B, n_heads, L, L)
+
+        causal_mask = _get_causal_mask(sequence_length, E.device)  # (L, L)
+
+        query_padding_mask = padding_mask[:, None, :, None]  # (B, 1, L, 1)
+        key_padding_mask = padding_mask[:, None, None, :]  # (B, 1, 1, L)
+
+        Z = Z.masked_fill(
+            causal_mask,
+            float("-inf"),
+        )
+        Z = Z.masked_fill(
+            key_padding_mask,
+            float("-inf"),
+        )
+
+        Z = Z.masked_fill(
+            query_padding_mask,
+            0.0,
+        )
+
+        A = F.softmax(
+            Z,
+            dim=-1,
+        )
+        A_dropout = F.dropout(
+            A,
+            p=self.dropout,
+            training=self.training,
+        )
+
+        S = A_dropout @ V  # (B, n_heads, L, head_dim)
+
+        S = S.transpose(1, 2)
+        S = S.contiguous().view(
+            batch_size,
+            sequence_length,
+            self.embedding_dim,
+        )  # (B, L, d)
+
+        S = self.W_o(S)
+
+        S = S.masked_fill(
+            padding_mask.unsqueeze(-1),
+            0.0,
+        )
+
+        if return_gates:
+            return S, {
+                "query": G_Q,
+                "key": G_K,
+            }
+
+        return S
+
+
+class CCGSelfAttentionBlock(nn.Module):
+    def __init__(
+        self,
+        items_count: int,
+        embedding_dim: int,
+        content_dim: int,
+        context_dim: int,
+        max_sequence_length: int,
+        ffn_hidden_dim: int,
+        content_hidden_dim: int | None = None,
+        context_hidden_dim: int | None = None,
+        dropout: float = 0.0,
+        device: torch.device | None = None,
+        n_heads: int = 1,
+        use_query_gate: bool = True,
+        use_key_gate: bool = True,
+        use_ffn_gate: bool = True,
+    ) -> None:
+        super().__init__()
+
+        if context_hidden_dim is None:
+            context_hidden_dim = embedding_dim
+
+        self.items_count = items_count
+        self.embedding_dim = embedding_dim
+        self.content_dim = content_dim
+        self.context_dim = context_dim
+        self.context_hidden_dim = context_hidden_dim
+        self.max_sequence_length = max_sequence_length
+        self.ffn_hidden_dim = ffn_hidden_dim
+        self.dropout = dropout
+        self.n_heads = n_heads
+        self.use_ffn_gate = use_ffn_gate
+
+        if device is None:
+            device = torch.get_default_device()
+        self.device = device
+
+        self.SelfAttentionLayer = CCGSelfAttentionLayer(
+            items_count=items_count,
+            embedding_dim=embedding_dim,
+            content_dim=content_dim,
+            content_hidden_dim=content_hidden_dim,
+            max_sequence_length=max_sequence_length,
+            dropout=dropout,
+            device=device,
+            n_heads=n_heads,
+            use_query_gate=use_query_gate,
+            use_key_gate=use_key_gate,
+        )
+
+        self.ffn = nn.Sequential(
+            nn.Linear(
+                in_features=embedding_dim,
+                out_features=ffn_hidden_dim,
+                device=device,
+            ),
+            nn.ReLU(),
+            nn.Dropout(p=dropout),
+            nn.Linear(
+                in_features=ffn_hidden_dim,
+                out_features=embedding_dim,
+                device=device,
+            ),
+            nn.Dropout(p=dropout),
+        )
+
+        self.MLP_FFN = nn.Sequential(
+            nn.Linear(context_dim, context_hidden_dim, device=device),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(context_hidden_dim, embedding_dim, device=device),
+        )
+        nn.init.normal_(self.MLP_FFN[-1].weight, mean=0.0, std=1e-3)
+        nn.init.zeros_(self.MLP_FFN[-1].bias)
+
+        self.sa_normalizer = nn.LayerNorm(
+            normalized_shape=embedding_dim,
+            device=device,
+        )
+        self.ffn_normalizer = nn.LayerNorm(
+            normalized_shape=embedding_dim,
+            device=device,
+        )
+
+    def forward(
+        self,
+        E: torch.Tensor,
+        content: torch.Tensor,
+        context: torch.Tensor,
+        padding_mask: torch.Tensor,
+        return_gates: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        E_norm = self.sa_normalizer(E)
+
+        attention_output = self.SelfAttentionLayer(
+            E_norm,
+            content,
+            padding_mask,
+            return_gates=return_gates,
+        )
+        if return_gates:
+            S, gates = attention_output
+        else:
+            S = attention_output
+            gates = {}
+
+        H = E + S
+        H_norm = self.ffn_normalizer(H)
+
+        F_out = self.ffn(H_norm)
+
+        if self.use_ffn_gate:
+            context = context.to(
+                device=F_out.device,
+                dtype=F_out.dtype,
+            )
+            if context.ndim == 2:
+                if context.shape != (F_out.shape[0], self.context_dim):
+                    raise ValueError(
+                        "'context' must have shape "
+                        f"({F_out.shape[0]}, {self.context_dim})"
+                    )
+                G_FFN = 2 * torch.sigmoid(self.MLP_FFN(context))
+                G_FFN = G_FFN.unsqueeze(1).expand(-1, F_out.shape[1], -1)
+            elif context.ndim == 3:
+                if context.shape != (F_out.shape[0], F_out.shape[1], self.context_dim):
+                    raise ValueError(
+                        "'context' must have shape "
+                        f"({F_out.shape[0]}, {F_out.shape[1]}, {self.context_dim})"
+                    )
+                G_FFN = 2 * torch.sigmoid(self.MLP_FFN(context))
+            else:
+                raise ValueError("'context' must have 2 or 3 dimensions")
+        else:
+            G_FFN = torch.ones_like(F_out)
+
+        H_out = H + F_out * G_FFN
+
+        if return_gates:
+            gates["ffn"] = G_FFN
+            return H_out, gates
+
+        return H_out
+
+
+class CCGSASRec(nn.Module):
+    def __init__(
+        self,
+        n_blocks: int,
+        items_count: int,
+        embedding_dim: int,
+        content_dim: int,
+        context_dim: int,
+        max_sequence_length: int,
+        ffn_hidden_dim: int,
+        content_hidden_dim: int | None = None,
+        context_hidden_dim: int | None = None,
+        dropout: float = 0.0,
+        padding_idx: int = 0,
+        device: torch.device | None = None,
+        n_heads: int = 1,
+        use_query_gate: bool = True,
+        use_key_gate: bool = True,
+        use_ffn_gate: bool = True,
+    ) -> None:
+        super().__init__()
+
+        self.n_blocks = n_blocks
+        self.items_count = items_count
+        self.embedding_dim = embedding_dim
+        self.content_dim = content_dim
+        self.context_dim = context_dim
+        self.max_sequence_length = max_sequence_length
+        self.ffn_hidden_dim = ffn_hidden_dim
+        self.dropout = dropout
+        self.padding_idx = padding_idx
+        self.n_heads = n_heads
+        self.use_query_gate = use_query_gate
+        self.use_key_gate = use_key_gate
+        self.use_ffn_gate = use_ffn_gate
+
+        if device is None:
+            device = torch.get_default_device()
+        self.device = device
+
+        self.ItemEmbedding = nn.Embedding(
+            num_embeddings=items_count,
+            embedding_dim=embedding_dim,
+            padding_idx=padding_idx,
+            device=device,
+        )
+
+        self.PositionalEmbedding = nn.Embedding(
+            num_embeddings=max_sequence_length + 1,
+            embedding_dim=embedding_dim,
+            padding_idx=padding_idx,
+            device=device,
+        )
+
+        self.SABlocks = nn.ModuleList(
+            [
+                CCGSelfAttentionBlock(
+                    items_count=items_count,
+                    embedding_dim=embedding_dim,
+                    content_dim=content_dim,
+                    context_dim=context_dim,
+                    content_hidden_dim=content_hidden_dim,
+                    context_hidden_dim=context_hidden_dim,
+                    max_sequence_length=max_sequence_length,
+                    ffn_hidden_dim=ffn_hidden_dim,
+                    dropout=dropout,
+                    device=device,
+                    n_heads=n_heads,
+                    use_query_gate=use_query_gate,
+                    use_key_gate=use_key_gate,
+                    use_ffn_gate=use_ffn_gate,
+                )
+                for _ in range(n_blocks)
+            ]
+        )
+
+        self.LayerNormalization = nn.LayerNorm(
+            self.embedding_dim,
+            device=device,
+        )
+
+    def log2feats(
+        self,
+        X: torch.Tensor | list,
+        content: torch.Tensor | list,
+        context: torch.Tensor | list,
+        return_gates: bool = False,
+    ) -> torch.Tensor | tuple[torch.Tensor, list[dict[str, torch.Tensor]]]:
+        device = self.ItemEmbedding.weight.device
+
+        X = _pad_truncate(
+            X,
+            self.max_sequence_length,
+            self.padding_idx,
+            device,
+        )
+        X = _make_int_tensor(X, device)
+
+        content = _pad_truncate_context(
+            content,
+            self.max_sequence_length,
+            self.content_dim,
+            device,
+        )
+        content = content.to(
+            device=device,
+            dtype=self.ItemEmbedding.weight.dtype,
+        )
+
+        if isinstance(context, torch.Tensor) and context.ndim == 2:
+            context = context.to(
+                device=device,
+                dtype=self.ItemEmbedding.weight.dtype,
+            )
+            if context.shape != (X.shape[0], self.context_dim):
+                raise ValueError(
+                    "'context' must have shape "
+                    f"({X.shape[0]}, {self.context_dim})"
+                )
+        else:
+            context = _pad_truncate_context(
+                context,
+                self.max_sequence_length,
+                self.context_dim,
+                device,
+            )
+            context = context.to(
+                device=device,
+                dtype=self.ItemEmbedding.weight.dtype,
+            )
+
+        if content.shape[0] != X.shape[0]:
+            raise ValueError("'X' and 'content' must have the same batch size")
+        if context.shape[0] != X.shape[0]:
+            raise ValueError("'X' and 'context' must have the same batch size")
+
+        padding_mask = _get_padding_mask(X, self.padding_idx, device)
+
+        item_embedding = self.ItemEmbedding(X) * math.sqrt(self.embedding_dim)
+
+        positional_ids = torch.arange(
+            1,
+            self.max_sequence_length + 1,
+            device=device,
+            dtype=torch.long,
+        )
+        positional_embedding = self.PositionalEmbedding(positional_ids)
+
+        E = item_embedding + positional_embedding
+        E = F.dropout(E, p=self.dropout, training=self.training)
+        E[padding_mask] = 0.0
+
+        gates_per_block = []
+        for block in self.SABlocks:
+            if return_gates:
+                E, block_gates = block(
+                    E,
+                    content,
+                    context,
+                    padding_mask,
+                    return_gates=True,
+                )
+                gates_per_block.append(block_gates)
+            else:
+                E = block(E, content, context, padding_mask)
+            E[padding_mask] = 0.0
+
+        E = self.LayerNormalization(E)
+        E[padding_mask] = 0.0
+
+        if return_gates:
+            return E, gates_per_block
+
+        return E
+
+    def forward(
+        self,
+        log_seqs: torch.Tensor,
+        content: torch.Tensor | list,
+        context: torch.Tensor | list,
+        positive_seqs: torch.Tensor,
+        negative_seqs: torch.Tensor,
+        return_gates: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor] | tuple[
+        torch.Tensor,
+        torch.Tensor,
+        list[dict[str, torch.Tensor]],
+    ]:
+        """returns tuple[positive logits, negative logits], dtype=torch.Tensor"""
+        log_feats_output = self.log2feats(
+            log_seqs,
+            content,
+            context,
+            return_gates=return_gates,
+        )
+        if return_gates:
+            log_feats, gates = log_feats_output
+        else:
+            log_feats = log_feats_output
+            gates = []
+
+        device = self.ItemEmbedding.weight.device
+
+        positive_seqs = _pad_truncate(
+            positive_seqs,
+            self.max_sequence_length,
+            self.padding_idx,
+            device,
+        )
+        positive_seqs = _make_int_tensor(positive_seqs, device)
+        negative_seqs = _pad_truncate(
+            negative_seqs,
+            self.max_sequence_length,
+            self.padding_idx,
+            device,
+        )
+        negative_seqs = _make_int_tensor(negative_seqs, device)
+
+        positives = self.ItemEmbedding(positive_seqs)
+        negatives = self.ItemEmbedding(negative_seqs)
+
+        pos_logits = (log_feats * positives).sum(dim=-1)
+        neg_logits = (log_feats * negatives).sum(dim=-1)
+
+        if return_gates:
+            return pos_logits, neg_logits, gates
 
         return pos_logits, neg_logits
 
@@ -770,13 +1324,13 @@ class GatedSelfAttentionBlock(nn.Module):
                 device=device,
             ),
             nn.ReLU(),
-            nn.Dropout(dropout=dropout),
+            nn.Dropout(p=dropout),
             nn.Linear(
                 in_features=ffn_hidden_dim,
                 out_features=embedding_dim,
                 device=device,
             ),
-            nn.Dropout(dropout=dropout),
+            nn.Dropout(p=dropout),
         )
 
         self.sa_normalizer = nn.LayerNorm(

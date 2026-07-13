@@ -222,3 +222,5 @@ class ImplicitALS:
         return topk_indexes
 
 
+implicit_ALS = ImplicitALS
+
