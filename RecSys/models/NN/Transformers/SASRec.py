@@ -560,6 +560,70 @@ class SASRec(nn.Module):
 
         return pos_logits, neg_logits
 
+    @torch.inference_mode()
+    def predict(
+        self,
+        log_seqs: torch.Tensor | list,
+        item_ids: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """
+        Возвращает logits следующего объекта.
+
+        Parameters
+        ----------
+        log_seqs:
+            Batch последовательностей:
+            - Tensor формы (B, L);
+            - список последовательностей разной длины.
+
+        item_ids:
+            None:
+                logits для всего каталога, форма (B, n_items).
+
+            Tensor формы (C,):
+                одинаковые кандидаты для всего batch,
+                результат формы (B, C).
+
+            Tensor формы (B, C):
+                отдельные кандидаты для каждого пользователя,
+                результат формы (B, C).
+        """
+        try:
+            was_training = self.training 
+            self.eval()
+
+            log_feats = self.log2feats(log_seqs)
+
+            user_state = log_feats[:, -1, :]
+
+            if item_ids is None:
+                return user_state @ self.ItemEmbedding.weight.T # (B, D) @ (D, n_items) -> (B, n_items)
+            
+            item_ids = torch.as_tensor(
+                item_ids,
+                dtype=torch.long,
+                device=user_state.device,
+            )
+
+            item_embeddings = self.ItemEmbedding(item_ids)
+
+            if item_ids.ndim == 1:
+                return user_state @ item_embeddings.T
+            
+            elif item_ids.ndim == 2:
+                if item_ids.shape[0] != user_state.shape[0]:
+                    raise ValueError("For 2D 'item_ids' batch sizes must match")
+                
+                return torch.einsum(
+                    "bcd,bd->bc",
+                    item_embeddings,
+                    user_state,
+                )
+            
+            raise ValueError("'item_ids' must have shape (C,) or (B, C)")
+
+        finally:
+            self.train(was_training)
 
 class CCGSelfAttentionLayer(nn.Module):
     def __init__(
