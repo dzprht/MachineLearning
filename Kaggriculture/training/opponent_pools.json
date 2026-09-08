@@ -11,6 +11,168 @@
             0,
             1
           ]
+        },
+        {
+          "agent_id": "wheat_loop_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ]
+        },
+        {
+          "agent_id": "melon_loop_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ]
+        },
+        {
+          "agent_id": "goose_loop_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ]
+        },
+        {
+          "agent_id": "cow_loop_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ]
+        },
+        {
+          "agent_id": "carrot_field_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ]
+        },
+        {
+          "agent_id": "town_demand_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ]
+        },
+        {
+          "agent_id": "staggered_mix_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ]
+        },
+        {
+          "agent_id": "crop_expander_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ]
+        },
+        {
+          "agent_id": "crop_follower_v1",
+          "weight": 0.5,
+          "positions": [
+            0,
+            1
+          ]
+        },
+        {
+          "agent_id": "buffered_seller_v1",
+          "weight": 0.5,
+          "positions": [
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    "validation_v1": {
+      "role": "validation",
+      "members": [
+        {
+          "agent_id": "tomato_loop_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ]
+        },
+        {
+          "agent_id": "strawberry_loop_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ]
+        },
+        {
+          "agent_id": "sheep_loop_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ]
+        },
+        {
+          "agent_id": "tomato_field_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ]
+        },
+        {
+          "agent_id": "crop_avoider_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ]
+        },
+        {
+          "agent_id": "goose_ranch_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ]
+        },
+        {
+          "agent_id": "mixed_farm_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    "test_v1": {
+      "role": "test",
+      "members": [
+        {
+          "agent_id": "melon_field_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ]
+        },
+        {
+          "agent_id": "dairy_ranch_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ]
         }
       ]
     }

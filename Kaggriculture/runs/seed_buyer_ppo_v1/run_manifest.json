@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-09-08T12:05:33.798980+00:00",
+  "master_seed": 8008,
+  "config": {
+    "schema_version": 1,
+    "train_pool": "train_v1",
+    "master_seed": 8008,
+    "primitive_budget": 5000000,
+    "n_envs": 8,
+    "output_dir": "runs/seed_buyer_ppo_v1",
+    "ppo": {
+      "learning_rate": 0.0003,
+      "n_steps": 256,
+      "batch_size": 64,
+      "n_epochs": 10,
+      "gamma": 1.0,
+      "gae_lambda": 0.95,
+      "clip_range": 0.2,
+      "ent_coef": 0.01,
+      "vf_coef": 0.5,
+      "max_grad_norm": 0.5
+    }
+  },
+  "pools": {
+    "train_v1": {
+      "role": "train",
+      "members": [
+        {
+          "agent_id": "carrot_loop_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ],
+          "artifact_sha256": "555676911b15526a332c3cc7223242e914f31c771e4a4ea616399a26a9fef35b"
+        },
+        {
+          "agent_id": "wheat_loop_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ],
+          "artifact_sha256": "9c8c7da1390460eef8c2e2303bbce4cb6f2941412d045bf33fd4bf4baf3383b6"
+        },
+        {
+          "agent_id": "melon_loop_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ],
+          "artifact_sha256": "3d635b65a1aaabda7327d24268a90010edf20139bb04671ec2830dd034ef134e"
+        },
+        {
+          "agent_id": "goose_loop_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ],
+          "artifact_sha256": "5577154b17b9396fdc594feb4007a14eb18305253360c94c488996a5584f42a0"
+        },
+        {
+          "agent_id": "cow_loop_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ],
+          "artifact_sha256": "d9c371870c44a53d197d861ddbf7dee0760d3b870b3d9dfa252a5e0ade25d0e3"
+        },
+        {
+          "agent_id": "carrot_field_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ],
+          "artifact_sha256": "283b71ab63b429db56498814ca159781a5bba524751e33f6a1b400bdf6763558"
+        },
+        {
+          "agent_id": "town_demand_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ],
+          "artifact_sha256": "e00e22a393b58d09b95cd9e9b89a97d6bb295b01fdee691b5058bd2011c5622b"
+        },
+        {
+          "agent_id": "staggered_mix_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ],
+          "artifact_sha256": "04c833657c5edadf7ffbe4882d01dc723afb84476e55cadf49140e75beda7094"
+        },
+        {
+          "agent_id": "crop_expander_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ],
+          "artifact_sha256": "fc073eb2a4dc88547d39b145ce639aaefc73baa9eccc221f83d8dd86adc088af"
+        },
+        {
+          "agent_id": "crop_follower_v1",
+          "weight": 0.5,
+          "positions": [
+            0,
+            1
+          ],
+          "artifact_sha256": "4f2820ec71cbf898ebfe390c0aad106cc10482d6086b01b46c084c6693aad9a8"
+        },
+        {
+          "agent_id": "buffered_seller_v1",
+          "weight": 0.5,
+          "positions": [
+            0,
+            1
+          ],
+          "artifact_sha256": "24c3f48431c2aeaac107af1d75d21a220dabb5e6899bffe1841e1eef7ed64997"
+        }
+      ]
+    }
+  },
+  "pool_overlap_warnings": [],
+  "package_versions": {
+    "kaggle-environments": "1.32.7",
+    "numpy": "2.4.6",
+    "torch": "2.12.1",
+    "gymnasium": "1.2.0",
+    "stable-baselines3": "2.9.0",
+    "sb3-contrib": "2.9.0"
+  },
+  "opponent_episode_counts": {
+    "train_v1": {
+      "town_demand_v1": 734,
+      "goose_loop_v1": 694,
+      "staggered_mix_v1": 722,
+      "wheat_loop_v1": 688,
+      "crop_expander_v1": 664,
+      "carrot_loop_v1": 727,
+      "cow_loop_v1": 679,
+      "melon_loop_v1": 702,
+      "buffered_seller_v1": 334,
+      "crop_follower_v1": 313,
+      "carrot_field_v1": 695
+    }
+  },
+  "actual_primitive_steps": 5000567
+}

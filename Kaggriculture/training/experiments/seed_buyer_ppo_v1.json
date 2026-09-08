@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "train_pool": "train_v1",
+  "master_seed": 8008,
+  "primitive_budget": 5000000,
+  "n_envs": 8,
+  "output_dir": "runs/seed_buyer_ppo_v1"
+}

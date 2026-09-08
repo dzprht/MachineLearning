@@ -34,7 +34,7 @@
 
 `seed_buyer` содержит 249-признаковый encoder, одно-клеточный executor всех пяти культур, Gymnasium environment, фиксированную конфигурацию MaskablePPO, ограничитель бюджета внутренних ходов и экспорт actor в NumPy.
 
-Будущий запуск требует отдельный JSON, которого в репозитории пока нет:
+Запуск требует отдельный JSON с конфигурацией эксперимента. `training/experiments/seed_buyer_ppo_v1.json` подготовлен (2026-09-08) и ссылается на заполненный `train_v1`; обучение по нему ещё не запускалось:
 
 ```json
 {
@@ -47,10 +47,16 @@
 }
 ```
 
-После наполнения независимых пулов обучение запускается только явно:
+`primitive_budget` — плейсхолдер из документации, не результат подбора; пересмотреть перед реальным запуском при необходимости.
+
+Обучение запускается только явно:
 
 ```bash
-../ml_venv/bin/python -m training.seed_buyer.train --config EXPERIMENT.json
+../ml_venv/bin/python -m training.seed_buyer.train --config training/experiments/seed_buyer_ppo_v1.json
 ```
+
+2026-09-08: прогон по этому конфигу завершён (`runs/seed_buyer_ppo_v1/`, `actual_primitive_steps=5000567`), см. результат IDEA-004/008 в `docs/IDEAS.md`. Веса и SB3-чекпоинт лежат в `runs/seed_buyer_ppo_v1/{actor.npz,sb3_model.zip}`; автономный submission собран в `submission/`.
+
+Начиная с этого прогона `train.py` сохраняет прогресс каждые ~1% бюджета (`sb3_model.zip`, `actor.npz`, `progress.json` в `output_dir`) и **продолжает** с последнего чекпоинта, если запустить ту же команду с тем же `--config` повторно — не запускает обучение заново. Повторный запуск после уже достигнутого бюджета — no-op. Чтобы обучить версию с нуля, используйте новый `output_dir`.
 
 Команда создаёт новый output-каталог, записывает разрешённые пулы и версии зависимостей в `run_manifest.json`, а после обучения сохраняет SB3 checkpoint, NumPy actor и схему признаков.
