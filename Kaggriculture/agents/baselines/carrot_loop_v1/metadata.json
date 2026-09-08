@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "id": "carrot_loop_v1",
+  "name": "Minimal carrot loop",
+  "version": 1,
+  "created_at": "2026-09-08",
+  "created_by": "Codex, по явному запросу пользователя",
+  "status": "frozen",
+  "type": "python",
+  "policy_type": "deterministic_rule_based",
+  "entrypoint": "agents/baselines/carrot_loop_v1/main.py:agent",
+  "artifact_files": ["main.py"],
+  "artifact_sha256": "555676911b15526a332c3cc7223242e914f31c771e4a4ea616399a26a9fef35b",
+  "intent": "Самый простой осмысленный агент и проверка базового цикла env",
+  "strategy": "Одна стартовая клетка; морковь; ежедневный полив; сбор после полива на третий день; немедленная продажа содержимого сарая",
+  "uses_observation": ["player", "day", "farms[].money", "farms[].farmer", "farms[].tiles", "private.seeds", "private.shed"],
+  "uses_actions": ["PASS", "PLANT", "WATER", "HARVEST", "DIG", "BUY_SEED", "SELL"],
+  "excluded_mechanics": ["movement", "farm_hands", "land", "animals", "fertilizer", "dynamic_crop_selection", "opponent_state", "market_timing"],
+  "source_idea": "docs/IDEAS.md#idea-002",
+  "evaluation": {
+    "environment": "kaggle-environments 1.32.7",
+    "protocol": "720 шагов; seed 1, 2, 3; против pass и starter; обе позиции",
+    "status": "passed",
+    "episodes": 12,
+    "done": 12,
+    "wins": 12,
+    "results": [
+      {
+        "opponent": "pass",
+        "mean_final_money": 3992.0,
+        "mean_margin": 992.0,
+        "seed_position_results": [3860.0, 3860.0, 4288.0, 4288.0, 3828.0, 3828.0]
+      },
+      {
+        "opponent": "starter",
+        "mean_final_money": 3965.67,
+        "mean_margin": 394.0,
+        "seed_position_results": [3841.0, 3841.0, 3876.0, 3876.0, 4180.0, 4180.0]
+      }
+    ],
+    "note": "Smoke-baseline на малом наборе seed; не является оценкой общей стратегической силы"
+  }
+}

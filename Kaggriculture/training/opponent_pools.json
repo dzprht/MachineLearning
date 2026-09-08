@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "pools": {
+    "train_v1": {
+      "role": "train",
+      "members": [
+        {
+          "agent_id": "carrot_loop_v1",
+          "weight": 1.0,
+          "positions": [
+            0,
+            1
+          ]
+        }
+      ]
+    }
+  }
+}

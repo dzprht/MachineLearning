@@ -1,5 +1,15 @@
 *.ipynb
+!Hackathons/KuaiRec.ipynb
+!Hackathons/KuaiRec_GB_Rerank.ipynb
 __pycache__
 *.csv
 sasrec_old.py
 data/
+/outputs/po_stranitsam_ccgsasrec/
+/outputs/kuairec_ccgsasrec/
+/outputs/kuairec_gb_rerank/
+../Hackathons
+../kuai-recsys
+../kuairec-recsys
+../kuairec-recsys_GPT
+../sasrec_trained
