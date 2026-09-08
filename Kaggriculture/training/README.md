@@ -4,7 +4,7 @@
 
 ## Opponent pools
 
-Замороженные агенты автоматически находятся по `agents/**/metadata.json`. Текущий состав пулов находится в `opponent_pools.json`.
+Замороженные агенты автоматически находятся по `agents/**/metadata.json` и `agents/**/*.metadata.json`. Текущий состав пулов находится в `opponent_pools.json`.
 
 ```bash
 ../ml_venv/bin/python -m training.poolctl list-agents

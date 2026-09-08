@@ -46,13 +46,15 @@ def hash_artifact(artifact_dir: Path, artifact_files: list[str]) -> str:
 
 
 def discover_agents(repo_root: Path | str = REPO_ROOT) -> dict[str, AgentRecord]:
-    """Discover every frozen agent described by an agents/**/metadata.json file."""
+    """Discover frozen agents described by metadata.json or *.metadata.json."""
     root = Path(repo_root).resolve()
     agents_root = root / "agents"
     records: dict[str, AgentRecord] = {}
     errors: list[str] = []
 
-    for metadata_path in sorted(agents_root.glob("**/metadata.json")):
+    metadata_paths = set(agents_root.glob("**/metadata.json"))
+    metadata_paths.update(agents_root.glob("**/*.metadata.json"))
+    for metadata_path in sorted(metadata_paths):
         try:
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
             required = {
