@@ -62,6 +62,10 @@ Prefer:
 
 A larger diff requires a concrete reason.
 
+### Agent capabilities — user preference, 2026-09-09
+
+Do not restrict agents' available cells, workers, or actions without necessity. Implementation convenience or a smaller input alone does not justify a capability restriction. If an extra restriction is needed for training stability, explicitly identify it, explain the choice and evidence, and distinguish a hypothesis from a verified requirement. Game-rule constraints and masks for infeasible actions remain valid. Do not treat existing arbitrary limits as proven necessary. Read `docs/TASKS.md` for actionable corrections, including removal of the Economist's nine-cell restriction.
+
 ---
 
 ## 4. RL experiment workflow

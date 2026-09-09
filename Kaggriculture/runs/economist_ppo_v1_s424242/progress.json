@@ -1,0 +1,18 @@
+{
+  "primitive_steps": 10000384,
+  "sb3_num_timesteps": 10000384,
+  "opponent_episode_counts": {
+    "wheat_loop_v1": 1329,
+    "town_demand_v1": 1387,
+    "melon_loop_v1": 1422,
+    "carrot_loop_v1": 1408,
+    "goose_loop_v1": 1370,
+    "carrot_field_v1": 1353,
+    "crop_follower_v1": 680,
+    "staggered_mix_v1": 1400,
+    "cow_loop_v1": 1495,
+    "crop_expander_v1": 1376,
+    "buffered_seller_v1": 684
+  },
+  "saved_at": "2026-09-09T02:50:34.117433+00:00"
+}

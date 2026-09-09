@@ -1,6 +1,6 @@
 # RL training infrastructure
 
-Текущий pipeline реализован, но обучение намеренно не запускалось и сохранённых весов нет. Корневой `main.py` по-прежнему использует `carrot_loop_v1`.
+`seed_buyer` (IDEA-004/008) прошёл первое реальное обучение 2026-09-08 (веса есть, submission собран). `economist` (IDEA-020) реализован и smoke-протестирован, но полноценное обучение по нему намеренно не запускалось. Корневой `main.py` по-прежнему использует `carrot_loop_v1`.
 
 ## Opponent pools
 
@@ -60,3 +60,27 @@
 Начиная с этого прогона `train.py` сохраняет прогресс каждые ~1% бюджета (`sb3_model.zip`, `actor.npz`, `progress.json` в `output_dir`) и **продолжает** с последнего чекпоинта, если запустить ту же команду с тем же `--config` повторно — не запускает обучение заново. Повторный запуск после уже достигнутого бюджета — no-op. Чтобы обучить версию с нуля, используйте новый `output_dir`.
 
 Команда создаёт новый output-каталог, записывает разрешённые пулы и версии зависимостей в `run_manifest.json`, а после обучения сохраняет SB3 checkpoint, NumPy actor и схему признаков.
+
+## Economist (IDEA-020)
+
+`economist` — многоклеточный RL-Экономист (выбор культуры + `HIRE_ONE`/`WAIT`, 9 клеток, до 4 помощников), rule-based маршрутизация/уход/продажи. В отличие от `seed_buyer` — не semi-Markov: один `env.step` = один примитивный ход = одно решение, поэтому `total_timesteps` PPO уже равен бюджету примитивных ходов. Reward — `0.01 * (delta_cash + delta_Phi)`, где Phi — analytic_v1 из IDEA-007 (`training/economist/phi.py`, чисто аналитический расчёт без `env.step`); `phi_enabled: false` в конфиге даёт контрольную денежную ветку (`Phi=0`).
+
+Формат конфига эксперимента — как у `seed_buyer`, плюс необязательное `phi_enabled` (по умолчанию `true`):
+
+```json
+{
+  "schema_version": 1,
+  "train_pool": "train_v1",
+  "master_seed": 8008,
+  "primitive_budget": 5000000,
+  "n_envs": 8,
+  "output_dir": "runs/economist_ppo_v1",
+  "phi_enabled": true
+}
+```
+
+```bash
+../ml_venv/bin/python -m training.economist.train --config EXPERIMENT.json
+```
+
+Тот же чекпоинтинг/resume, что у `seed_buyer`. 2026-09-08: реализация и 25 тестов (`tests/test_economist.py`) пройдены, плюс один короткий ручной smoke-прогон обучения (3000 примитивных шагов, `phi_enabled=true`) — воспроизводится тем же способом с любым тестовым JSON-конфигом. Полноценное обучение и сравнение rule-based/RL-денежного/RL-analytic_v1 из приёмки IDEA-020 не запускались — отдельное решение о бюджете. Подробности и известные упрощения analytic_v1 — в результате IDEA-020, `docs/IDEAS.md`.
